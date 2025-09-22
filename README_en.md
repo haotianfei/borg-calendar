@@ -25,7 +25,7 @@ borg-calendar is a visualization calendar tool for viewing [Borg Backup](https:/
 
 1. Clone or download this repository
 ```bash
-git clone https://github.com/talenhao/borg-calendar.git
+git clone https://github.com/haotianfei/borg-calendar.git
 cd borg-calendar
 ```
 2. Ensure the `borg-calendar.sh` file has execute permissions:

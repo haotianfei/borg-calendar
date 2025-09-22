@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # Borg Backup 日历查看器
+# Author: haotianfei
+# GitHub: https://github.com/haotianfei/borg-calendar
 # 显示备份日历，有备份的日期用反转色高亮
 # 基于归档的实际创建时间（{start}），不依赖归档名
 

@@ -23,7 +23,7 @@ borg-calendar 是一个用于查看 [Borg Backup](https://www.borgbackup.org/) �
 
 1. 克隆或下载本仓库
 ```bash
-git clone https://github.com/talenhao/borg-calendar.git
+git clone https://github.com/haotianfei/borg-calendar.git
 cd borg-calendar
 ```
 2. 确保 `borg-calendar.sh` 文件具有可执行权限：
