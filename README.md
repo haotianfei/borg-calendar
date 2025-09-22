@@ -1,5 +1,7 @@
 # borg-calendar
 
+[Switch to English version](README_en.md)
+
 borg-calendar 是一个用于查看 [Borg Backup](https://www.borgbackup.org/) 备份记录的可视化日历工具，旨在帮助用户直观地了解备份的历史执行情况。
 
 
