@@ -214,17 +214,12 @@ show_backup_history() {
     IFS='-' read -r ey em _ <<< "$earliest_date"
     IFS='-' read -r ly lm _ <<< "$latest_date"
 
-    local start_mon=$((ey * 12 + 10#$em))
-    local end_mon=$((ly * 12 + 10#$lm))
-
     echo "📅 备份历史: $earliest_date 到 $latest_date"
     echo "========================================"
-
-    for (( mon = start_mon; mon <= end_mon; mon++ )); do
-        local y=$((mon / 12))
-        local m=$((mon % 12))
-        [ $m -eq 0 ] && m=12 && y=$((y - 1))
-        show_calendar "$y" "$(printf "%02d" "$m")"
+    
+    # 按年显示备份历史
+    for (( year = ey; year <= ly; year++ )); do
+        show_year_calendar "$year"
         echo
     done
 }
