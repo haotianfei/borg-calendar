@@ -60,8 +60,11 @@ cd borg-calendar
 # 显示从最早到最晚的所有备份月份
 ./borg-calendar.sh
 
-# 使用指定的仓库路径
+# 使用指定的仓库路径（本地）
 ./borg-calendar.sh --borg-repo /path/to/repo
+
+# 使用指定的仓库路径（远程）
+./borg-calendar.sh --borg-repo ssh://root@192.168.1.100/borg_repos/huawei_backup
 
 # 显示 2025 年全年日历
 ./borg-calendar.sh 2025

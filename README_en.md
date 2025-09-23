@@ -62,8 +62,11 @@ Command line arguments > Environment variable BORG_REPO > Current directory
 # Display all backup months from earliest to latest
 ./borg-calendar.sh
 
-# Use specified repository path
+# Use specified repository path (local)
 ./borg-calendar.sh --borg-repo /path/to/repo
+
+# Use specified repository path (remote)
+./borg-calendar.sh --borg-repo ssh://root@192.168.1.100/borg_repos/huawei_backup
 
 # Display calendar for the entire year 2025
 ./borg-calendar.sh 2025
