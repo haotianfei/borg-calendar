@@ -9,6 +9,9 @@
 # 仓库路径（优先使用环境变量 BORG_REPO，如未设置则使用当前路径）
 BORG_REPO="${BORG_REPO:-.}"
 
+# 自动确认访问未知未加密仓库
+export BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK=yes
+
 # ANSI 颜色定义
 YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
