@@ -22,6 +22,9 @@ NC='\033[0m'        # 重置颜色
 # 全局缓存：存储所有备份数据 key=YYYY-MM, value="7 15 23"（天数）
 declare -A BACKUP_DATES_MAP
 
+# 全局缓存：存储 borg list 命令的输出结果
+declare BORG_LIST_OUTPUT=""
+
 # 显示帮助信息
 show_help() {
     cat << EOF
@@ -60,10 +63,38 @@ check_borg() {
     fi
 }
 
+# 处理密码输入
+handle_password() {
+    # 如果已经有 BORG_PASSPHRASE 环境变量，则直接使用
+    if [[ -n "$BORG_PASSPHRASE" ]]; then
+        return
+    fi
+
+    # 先尝试不使用密码访问仓库（使用轻量级的 borg list 命令）
+    if BORG_PASSPHRASE="" borg list "$BORG_REPO" &>/dev/null; then
+        # 仓库不需要密码
+        return
+    fi
+
+    # 检查仓库访问错误是否与密码相关
+    local error_output
+    error_output=$(BORG_PASSPHRASE="" borg list "$BORG_REPO" 2>&1 || true)
+    
+    # 检查错误信息是否与密码相关
+    if echo "$error_output" | grep -q -E "(Passphrase|password|encryption)" || 
+       echo "$error_output" | grep -q "Password:" ||
+       echo "$error_output" | grep -qi "passphrase"; then
+        # 如果没有 BORG_PASSPHRASE，则提示用户输入
+        read -s -p "请输入仓库密码: " BORG_PASSPHRASE
+        echo  # 输出一个换行符
+        export BORG_PASSPHRASE
+    fi
+}
+
 # 加载所有备份的 start 时间并缓存
 load_all_backups() {
     # 检查仓库是否存在（支持本地和远程仓库）
-    if ! borg info "$BORG_REPO" &>/dev/null; then
+    if ! BORG_PASSPHRASE="$BORG_PASSPHRASE" borg list "$BORG_REPO" &>/dev/null; then
         # 尝试提供更具体的错误信息
         if [[ "$BORG_REPO" == .* ]] || [[ "$BORG_REPO" == /* ]]; then
             # 看起来像本地路径
@@ -83,7 +114,12 @@ load_all_backups() {
     unset BACKUP_DATES_MAP
     declare -g -A BACKUP_DATES_MAP
 
-    # 使用进程替换读取所有归档的开始时间
+    # 获取所有归档的开始时间（只执行一次borg list命令）
+    if [[ -z "$BORG_LIST_OUTPUT" ]]; then
+        BORG_LIST_OUTPUT=$(BORG_PASSPHRASE="$BORG_PASSPHRASE" borg list --format '{start}{NL}' "$BORG_REPO" 2>/dev/null || true)
+    fi
+
+    # 使用缓存的输出结果
     while IFS= read -r line; do
         # 提取 YYYY-MM-DD 格式的日期
         date_part=$(echo "$line" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
@@ -94,7 +130,7 @@ load_all_backups() {
             key="$year-$month_padded"
             BACKUP_DATES_MAP["$key"]+="$day_nozero "
         fi
-    done < <(borg list --format '{start}{NL}' "$BORG_REPO" 2>/dev/null || true)
+    done <<< "$BORG_LIST_OUTPUT"
 
     # 对每个 key 的值去重排序
     for key in "${!BACKUP_DATES_MAP[@]}"; do
@@ -328,6 +364,13 @@ main() {
     done
 
     check_borg
+    
+    # 处理密码输入
+    handle_password
+    
+    # 设置脚本退出时清除密码
+    trap 'unset BORG_PASSPHRASE' EXIT
+    
     load_all_backups
 
     case "$#" in
