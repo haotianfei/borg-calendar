@@ -70,15 +70,24 @@ handle_password() {
         return
     fi
 
-    # 先尝试不使用密码访问仓库（使用轻量级的 borg list 命令）
-    if BORG_PASSPHRASE="" borg list "$BORG_REPO" &>/dev/null; then
-        # 仓库不需要密码
+    # 如果已经有缓存的列表输出，说明已经验证过仓库访问，不需要再次检查
+    if [[ -n "$BORG_LIST_OUTPUT" ]]; then
+        return
+    fi
+
+    # 尝试不使用密码访问仓库并缓存结果
+    local temp_output
+    temp_output=$(BORG_PASSPHRASE="" borg list --format '{start}{NL}' "$BORG_REPO" 2>/dev/null || true)
+    
+    # 如果成功获取到输出，说明仓库不需要密码
+    if [[ -n "$temp_output" ]]; then
+        BORG_LIST_OUTPUT="$temp_output"
         return
     fi
 
     # 检查仓库访问错误是否与密码相关
     local error_output
-    error_output=$(BORG_PASSPHRASE="" borg list "$BORG_REPO" 2>&1 || true)
+    error_output=$(BORG_PASSPHRASE="" borg list --format '{start}{NL}' "$BORG_REPO" 2>&1 || true)
     
     # 检查错误信息是否与密码相关
     if echo "$error_output" | grep -q -E "(Passphrase|password|encryption)" || 
@@ -93,46 +102,46 @@ handle_password() {
 
 # 加载所有备份的 start 时间并缓存
 load_all_backups() {
-    # 检查仓库是否存在（支持本地和远程仓库）
-    if ! BORG_PASSPHRASE="$BORG_PASSPHRASE" borg list "$BORG_REPO" &>/dev/null; then
-        # 尝试提供更具体的错误信息
-        if [[ "$BORG_REPO" == .* ]] || [[ "$BORG_REPO" == /* ]]; then
-            # 看起来像本地路径
-            if [ ! -d "$BORG_REPO" ]; then
-                echo "错误: Borg 仓库目录不存在: $BORG_REPO" >&2
-            else
-                echo "错误: $BORG_REPO 不是有效的 Borg 仓库" >&2
-            fi
-        else
-            # 可能是远程仓库
-            echo "错误: 无法访问 Borg 仓库: $BORG_REPO" >&2
-        fi
-        exit 1
+    # 如果解析器缓存已存在，直接返回
+    if [[ ${#BACKUP_DATES_MAP[@]} -gt 0 ]]; then
+        return
     fi
 
-    # 清空旧缓存
+    # 清空旧的解析缓存
     unset BACKUP_DATES_MAP
     declare -g -A BACKUP_DATES_MAP
 
-    # 获取所有归档的开始时间（只执行一次borg list命令）
+    # 如果 handle_password 已经缓存了输出，则直接使用
+    # 否则，执行一次 borg list 命令来获取数据
     if [[ -z "$BORG_LIST_OUTPUT" ]]; then
-        BORG_LIST_OUTPUT=$(BORG_PASSPHRASE="$BORG_PASSPHRASE" borg list --format '{start}{NL}' "$BORG_REPO" 2>/dev/null || true)
+        local output
+        output=$(BORG_PASSPHRASE="$BORG_PASSPHRASE" borg list --format '{start}{NL}' "$BORG_REPO" 2>&1)
+        local ret=$?
+        
+        # 检查命令是否执行成功
+        if [[ $ret -ne 0 ]]; then
+            echo "错误: 执行 'borg list' 失败 (退出码: $ret):" >&2
+            echo "$output" >&2
+            exit 1
+        fi
+        
+        BORG_LIST_OUTPUT="$output"
     fi
 
-    # 使用缓存的输出结果
+    # 解析缓存的输出结果
     while IFS= read -r line; do
         # 提取 YYYY-MM-DD 格式的日期
         date_part=$(echo "$line" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
         if [ -n "$date_part" ]; then
             IFS='-' read -r year month day <<< "$date_part"
             month_padded=$(printf "%02d" "$((10#$month))")
-            day_nozero=$(echo "$((10#$day))")  # 去前导零
+            day_nozero=$((10#$day)) # 去前导零
             key="$year-$month_padded"
             BACKUP_DATES_MAP["$key"]+="$day_nozero "
         fi
     done <<< "$BORG_LIST_OUTPUT"
 
-    # 对每个 key 的值去重排序
+    # 对每个 key 的值进行去重和排序
     for key in "${!BACKUP_DATES_MAP[@]}"; do
         BACKUP_DATES_MAP["$key"]=$(echo "${BACKUP_DATES_MAP[$key]}" | tr ' ' '\n' | sort -nu | tr '\n' ' ')
     done
