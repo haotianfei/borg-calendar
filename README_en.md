@@ -14,6 +14,8 @@ borg-calendar is a visualization calendar tool for viewing [Borg Backup](https:/
 - Support for both local and remote Borg repositories
 - Flexible parameter configuration and environment variable support
 - Automatic detection and display of backup time ranges
+- Intelligent password handling to avoid exposing passwords on the command line
+- Performance optimization to reduce redundant queries to Borg repository
 
 ## Requirements
 
@@ -47,14 +49,66 @@ cd borg-calendar
 ### Options
 
 - `--borg-repo PATH`: Specify the Borg repository path (highest priority)
+- `--help, -h`: Display help information
 
 ### Environment Variables
 
 - `BORG_REPO`: Specify the Borg repository path (medium priority, defaults to current directory)
+- `BORG_PASSPHRASE`: Borg repository password (if not set, the script will prompt for input)
 
 ### Repository Path Priority
 
 Command line arguments > Environment variable BORG_REPO > Current directory
+
+### Password Handling Mechanism
+
+The script handles passwords intelligently:
+- If the `BORG_PASSPHRASE` environment variable is already set, use it directly
+- If not set, try to access the repository without a password
+- Only prompt the user for input when it is confirmed that a password is required
+- The password is valid throughout the script execution to avoid repeated input
+- The password is automatically cleared when the script exits
+
+### Help Information
+
+You can view help information using the following command:
+
+```bash
+./borg-calendar.sh --help
+```
+
+The script displays help information according to the system locale:
+- If the system locale is a Chinese environment (such as `zh_CN.UTF-8`), Chinese help will be displayed
+- Otherwise, English help will be displayed
+
+The complete help information is as follows:
+
+```
+Usage: ./borg-calendar.sh [options] [year] [month]
+
+Display Borg Backup calendar with highlighted backup dates.
+
+Arguments:
+    year        Year to display (e.g., 2025)
+    month       Month to display (1-12)
+
+Options:
+    --borg-repo PATH   Specify Borg repository path (highest priority)
+
+Environment Variables:
+    BORG_REPO   Specify Borg repository path (medium priority, defaults to current directory)
+
+Examples:
+    ./borg-calendar.sh                              # Display all backup months from earliest to latest
+    ./borg-calendar.sh --borg-repo /path/to/repo    # Use specified repository path
+    ./borg-calendar.sh 2025                         # Display calendar for the entire year 2025
+    ./borg-calendar.sh 2025 7                       # Display calendar for July 2025
+    ./borg-calendar.sh 7                            # Display calendar for July of current year
+
+Note:
+    Backup existence is determined based on the {start} time field, not the archive name.
+    Repository path priority: Command line > Environment variable BORG_REPO > Current directory
+```
 
 ### Usage Examples
 
@@ -81,7 +135,7 @@ Command line arguments > Environment variable BORG_REPO > Current directory
 ## Output Example
 
 ```
-📅 备份历史: 2025-07 到 2025-09
+📅 Backup History: 2025-07 to 2025-09
 ========================================
 
                               2025
@@ -129,12 +183,20 @@ Dates with backups are highlighted with inverted colors (white background, black
 
 Note: Backup existence is determined based on the `{start}` time field, not the archive name.
 
+## Performance Optimization
+
+The script employs multiple performance optimization strategies:
+- Uses global caching to avoid repeated execution of the `borg list` command
+- Combines password checking and data retrieval into a single command execution
+- Executes the `borg list` command at most once during the entire script execution cycle
+
 ## Notes
 
 1. Ensure appropriate read permissions for the Borg repository
 2. For remote repositories, ensure network connectivity
 3. The script caches all backup data to improve performance
-4. If the BORG_REPO environment variable is not set and no repository path is specified via command line arguments, the script will default to looking for a Borg repository in the current directory
+4. The script optimizes `borg` command execution to reduce system overhead
+5. If the BORG_REPO environment variable is not set and no repository path is specified via command line arguments, the script will default to looking for a Borg repository in the current directory
 
 ## License
 

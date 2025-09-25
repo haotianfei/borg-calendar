@@ -27,7 +27,10 @@ declare BORG_LIST_OUTPUT=""
 
 # 显示帮助信息
 show_help() {
-    cat << EOF
+    # 检查系统语言环境是否为中文
+    if [[ "$LANG" =~ ^zh ]] || [[ "$LC_ALL" =~ ^zh ]] || [[ "$LC_MESSAGES" =~ ^zh ]]; then
+        # 显示中文帮助信息
+        cat << EOF
 用法: $0 [选项] [年份] [月份]
 
 显示 Borg 备份日历，有备份的日期会以反转色高亮。
@@ -53,12 +56,41 @@ show_help() {
     归档是否存在的判断基于 {start} 时间字段，与归档名无关。
     仓库路径优先级：命令行参数 > 环境变量 BORG_REPO > 当前路径
 EOF
+    else
+        # 显示英文帮助信息
+        cat << EOF
+Usage: $0 [options] [year] [month]
+
+Display Borg Backup calendar with highlighted backup dates.
+
+Arguments:
+    year        Year to display (e.g., 2025)
+    month       Month to display (1-12)
+
+Options:
+    --borg-repo PATH   Specify Borg repository path (highest priority)
+
+Environment Variables:
+    BORG_REPO   Specify Borg repository path (medium priority, defaults to current directory)
+
+Examples:
+    $0                              # Display all backup months from earliest to latest
+    $0 --borg-repo /path/to/repo    # Use specified repository path
+    $0 2025                         # Display calendar for the entire year 2025
+    $0 2025 7                       # Display calendar for July 2025
+    $0 7                            # Display calendar for July of current year
+
+Note:
+    Backup existence is determined based on the {start} time field, not the archive name.
+    Repository path priority: Command line > Environment variable BORG_REPO > Current directory
+EOF
+    fi
 }
 
 # 检查 borg 命令是否存在
 check_borg() {
     if ! command -v borg &> /dev/null; then
-        echo "错误: 'borg' 命令未找到，请先安装 BorgBackup。" >&2
+        echo "Error: 'borg' command not found, please install BorgBackup first." >&2
         exit 1
     fi
 }
@@ -94,7 +126,7 @@ handle_password() {
        echo "$error_output" | grep -q "Password:" ||
        echo "$error_output" | grep -qi "passphrase"; then
         # 如果没有 BORG_PASSPHRASE，则提示用户输入
-        read -s -p "请输入仓库密码: " BORG_PASSPHRASE
+        read -s -p "Please enter repository password: " BORG_PASSPHRASE
         echo  # 输出一个换行符
         export BORG_PASSPHRASE
     fi
@@ -102,46 +134,51 @@ handle_password() {
 
 # 加载所有备份的 start 时间并缓存
 load_all_backups() {
-    # 如果解析器缓存已存在，直接返回
-    if [[ ${#BACKUP_DATES_MAP[@]} -gt 0 ]]; then
+    # 如果已经有缓存数据，直接返回
+    if [[ -n "$BORG_LIST_OUTPUT" ]] && [[ ${#BACKUP_DATES_MAP[@]} -gt 0 ]]; then
         return
     fi
 
-    # 清空旧的解析缓存
+    # 清空旧缓存
     unset BACKUP_DATES_MAP
     declare -g -A BACKUP_DATES_MAP
 
-    # 如果 handle_password 已经缓存了输出，则直接使用
-    # 否则，执行一次 borg list 命令来获取数据
+    # 获取所有归档的开始时间（只执行一次borg list命令）
     if [[ -z "$BORG_LIST_OUTPUT" ]]; then
-        local output
-        output=$(BORG_PASSPHRASE="$BORG_PASSPHRASE" borg list --format '{start}{NL}' "$BORG_REPO" 2>&1)
-        local ret=$?
+        BORG_LIST_OUTPUT=$(BORG_PASSPHRASE="$BORG_PASSPHRASE" borg list --format '{start}{NL}' "$BORG_REPO" 2>/dev/null || true)
         
         # 检查命令是否执行成功
-        if [[ $ret -ne 0 ]]; then
-            echo "错误: 执行 'borg list' 失败 (退出码: $ret):" >&2
-            echo "$output" >&2
+        if [[ -z "$BORG_LIST_OUTPUT" ]]; then
+            # 尝试提供更具体的错误信息
+            if [[ "$BORG_REPO" == .* ]] || [[ "$BORG_REPO" == /* ]]; then
+                # 看起来像本地路径
+                if [ ! -d "$BORG_REPO" ]; then
+                    echo "Error: Borg repository directory does not exist: $BORG_REPO" >&2
+                else
+                    echo "Error: $BORG_REPO is not a valid Borg repository" >&2
+                fi
+            else
+                # 可能是远程仓库
+                echo "Error: Cannot access Borg repository: $BORG_REPO" >&2
+            fi
             exit 1
         fi
-        
-        BORG_LIST_OUTPUT="$output"
     fi
 
-    # 解析缓存的输出结果
+    # 使用缓存的输出结果
     while IFS= read -r line; do
         # 提取 YYYY-MM-DD 格式的日期
         date_part=$(echo "$line" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
         if [ -n "$date_part" ]; then
             IFS='-' read -r year month day <<< "$date_part"
             month_padded=$(printf "%02d" "$((10#$month))")
-            day_nozero=$((10#$day)) # 去前导零
+            day_nozero=$(echo "$((10#$day))")  # 去前导零
             key="$year-$month_padded"
             BACKUP_DATES_MAP["$key"]+="$day_nozero "
         fi
     done <<< "$BORG_LIST_OUTPUT"
 
-    # 对每个 key 的值进行去重和排序
+    # 对每个 key 的值去重排序
     for key in "${!BACKUP_DATES_MAP[@]}"; do
         BACKUP_DATES_MAP["$key"]=$(echo "${BACKUP_DATES_MAP[$key]}" | tr ' ' '\n' | sort -nu | tr '\n' ' ')
     done
@@ -250,7 +287,7 @@ get_backup_range() {
 show_backup_history() {
     local range=$(get_backup_range)
     if [[ "$range" == error* ]]; then
-        echo "未找到任何备份记录。"
+        echo "No backup records found."
         return 1
     fi
 
@@ -259,7 +296,7 @@ show_backup_history() {
     IFS='-' read -r ey em _ <<< "$earliest_date"
     IFS='-' read -r ly lm _ <<< "$latest_date"
 
-    echo "📅 备份历史: $earliest_date 到 $latest_date"
+    echo "📅 Backup History: $earliest_date to $latest_date"
     echo "========================================"
     
     # 按年显示备份历史
@@ -362,7 +399,7 @@ main() {
                 break
                 ;;
             -*)
-                echo "未知选项: $1" >&2
+                echo "Unknown option: $1" >&2
                 show_help
                 exit 1
                 ;;
